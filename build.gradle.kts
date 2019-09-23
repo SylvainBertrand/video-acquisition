@@ -35,7 +35,12 @@ ihmc {
 }
 
 mainDependencies {
+   //api(ihmc.sourceSetProject("main/generated-java"))
+	
    compile("org.bytedeco:javacv-platform:1.5")
+   compile("us.ihmc:ihmc-video-codecs:2.1.5")
+   compile("us.ihmc:ihmc-ros2-library:0.13.4")
+
    compile("us.ihmc:euclid:0.12.1")
    compile("us.ihmc:euclid-geometry:0.12.1")
    compile("us.ihmc:ihmc-pub-sub:0.10.2")

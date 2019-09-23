@@ -6,6 +6,7 @@ import java.awt.event.ActionListener;
 import java.awt.image.BufferedImage;
 import java.io.File;
 import java.io.IOException;
+import java.nio.ByteBuffer;
 
 import javax.imageio.ImageIO;
 import javax.swing.JCheckBox;
@@ -21,7 +22,19 @@ import org.bytedeco.javacv.CanvasFrame;
 import org.bytedeco.javacv.FFmpegFrameRecorder;
 import org.bytedeco.javacv.Frame;
 import org.bytedeco.javacv.FrameGrabber.Exception;
+import org.bytedeco.javacv.Java2DFrameConverter;
 import org.bytedeco.javacv.OpenCVFrameGrabber;
+
+import controller_msgs.msg.dds.VideoPacket;
+import us.ihmc.codecs.generated.YUVPicture;
+import us.ihmc.codecs.generated.YUVPicture.YUVSubsamplingType;
+import us.ihmc.codecs.yuv.JPEGEncoder;
+import us.ihmc.codecs.yuv.YUVPictureConverter;
+import us.ihmc.pubsub.DomainFactory.PubSubImplementation;
+import us.ihmc.ros2.RealtimeRos2Node;
+import us.ihmc.ros2.RealtimeRos2Publisher;
+import us.ihmc.util.PeriodicNonRealtimeThreadSchedulerFactory;
+import us.ihmc.util.PeriodicThreadSchedulerFactory;
 
 public class VideoManager
 {
@@ -34,10 +47,21 @@ public class VideoManager
    private boolean first = true;
    private boolean streamVideo = false;
 
+   private PeriodicThreadSchedulerFactory threadFactory = new PeriodicNonRealtimeThreadSchedulerFactory();
+   private String name = "video-publisher";
+   private String namespace = "/us/ihmc";
+   private int domainId = -1; // FIXME set me up
+   private RealtimeRos2Node ros2Node;
+   private RealtimeRos2Publisher<VideoPacket> videoPacketPublisher;
+   private Java2DFrameConverter frameConverter = new Java2DFrameConverter();
    private FFmpegFrameRecorder videoStreamer;
 
-   public VideoManager()
+   public VideoManager() throws IOException
    {
+      ros2Node = new RealtimeRos2Node(PubSubImplementation.FAST_RTPS, threadFactory, name, namespace, domainId);
+      videoPacketPublisher = ros2Node.createPublisher(VideoPacket.getPubSubType().get(), "logging_camera_video_stream");
+      ros2Node.spin();
+
       try
       {
          img = ImageIO.read(new File("noVideo.png"));
@@ -85,6 +109,9 @@ public class VideoManager
 
                      if (streamVideo)
                      {
+                        BufferedImage image = frameConverter.convert(capturedFrame);
+                        VideoPacket videoPacket = toVideoPacket(image);
+                        videoPacketPublisher.publish(videoPacket);
                         videoStreamer.record(capturedFrame);
                      }
                   }
@@ -114,6 +141,30 @@ public class VideoManager
       thread.start();
    }
 
+   private final YUVPictureConverter converter = new YUVPictureConverter();
+   private final JPEGEncoder encoder = new JPEGEncoder();
+
+   private VideoPacket toVideoPacket(BufferedImage image)
+   {
+      VideoPacket videoPacket = null;
+      YUVPicture picture = converter.fromBufferedImage(image, YUVSubsamplingType.YUV420);
+      try
+      {
+         ByteBuffer buffer = encoder.encode(picture, 75);
+         byte[] data = new byte[buffer.remaining()];
+         buffer.get(data);
+         videoPacket = new VideoPacket();
+         videoPacket.getData().add(data);
+         videoPacket.setTimestamp(System.nanoTime());
+      }
+      catch (IOException e)
+      {
+         e.printStackTrace();
+      }
+      picture.delete();
+      return videoPacket;
+   }
+
    private void setupUI()
    {
       mainFrame = new CanvasFrame("Capture Preview");
@@ -128,11 +179,9 @@ public class VideoManager
       JToggleButton btnStartStreaming = new JToggleButton("START STREAMING");
       btnStartStreaming.addActionListener(new ActionListener()
       {
-
          @Override
          public void actionPerformed(ActionEvent e)
          {
-
             if (btnStartStreaming.isSelected())
             {
                if (txtFieldDestinationAddr.getText().isEmpty() || txtFieldDestinationPort.getText().isEmpty())
@@ -229,7 +278,7 @@ public class VideoManager
       mainFrame.setVisible(true);
    }
 
-   public static void main(String args[])
+   public static void main(String args[]) throws IOException
    {
       new VideoManager();
    }
