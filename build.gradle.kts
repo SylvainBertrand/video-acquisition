@@ -24,7 +24,7 @@ plugins {
 ihmc {
    group = "us.ihmc"
    version = "0.0.0.0"
-   vcsUrl = "https://stash.ihmc.us/projects/ROB/repos/impulse-series-4-controller"
+   vcsUrl = "https://stash.ihmc.us/projects/ROB"
    openSource = false
 
    configureDependencyResolution()
@@ -73,8 +73,8 @@ tasks.create("generateMessages") {
 
       generator.addPackageRootToIDLGenerator(file("build/tmp/generateMessages/ros2-common-interfaces/rcl_interfaces").toPath())
       generator.addPackageRootToIDLGenerator(file("build/tmp/generateMessages/ros2-common-interfaces/common_interfaces").toPath())
-      generator.addPackageRootToIDLGenerator(file("src/main/messages/ihmc_interfaces").toPath())
-      generator.addPackageRootToROS1Generator(file("src/main/messages/ihmc_interfaces").toPath())
+      generator.addPackageRootToIDLGenerator(file("src/main/messages/videoacquisition").toPath())
+      generator.addPackageRootToROS1Generator(file("src/main/messages/videoacquisition").toPath())
 
       generator.addCustomIDLFiles(file("build/tmp/generateMessages/ros2-common-interfaces/").toPath())
 
