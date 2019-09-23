@@ -12,14 +12,11 @@ import javax.imageio.ImageIO;
 import javax.swing.JCheckBox;
 import javax.swing.JFrame;
 import javax.swing.JLabel;
-import javax.swing.JOptionPane;
 import javax.swing.JPanel;
 import javax.swing.JTextField;
 import javax.swing.JToggleButton;
 
-import org.bytedeco.ffmpeg.global.avcodec;
 import org.bytedeco.javacv.CanvasFrame;
-import org.bytedeco.javacv.FFmpegFrameRecorder;
 import org.bytedeco.javacv.Frame;
 import org.bytedeco.javacv.FrameGrabber.Exception;
 import org.bytedeco.javacv.Java2DFrameConverter;
@@ -54,7 +51,6 @@ public class VideoManager
    private RealtimeRos2Node ros2Node;
    private RealtimeRos2Publisher<VideoPacket> videoPacketPublisher;
    private Java2DFrameConverter frameConverter = new Java2DFrameConverter();
-   private FFmpegFrameRecorder videoStreamer;
 
    public VideoManager() throws IOException
    {
@@ -112,7 +108,6 @@ public class VideoManager
                         BufferedImage image = frameConverter.convert(capturedFrame);
                         VideoPacket videoPacket = toVideoPacket(image);
                         videoPacketPublisher.publish(videoPacket);
-                        videoStreamer.record(capturedFrame);
                      }
                   }
                }
@@ -120,7 +115,7 @@ public class VideoManager
                mainFrame.dispose();
 
             }
-            catch (Exception | org.bytedeco.javacv.FrameRecorder.Exception e)
+            catch (Exception e)
             {
                e.printStackTrace();
             }
@@ -177,63 +172,7 @@ public class VideoManager
       mainFrame.getContentPane().add(panel, BorderLayout.NORTH);
 
       JToggleButton btnStartStreaming = new JToggleButton("START STREAMING");
-      btnStartStreaming.addActionListener(new ActionListener()
-      {
-         @Override
-         public void actionPerformed(ActionEvent e)
-         {
-            if (btnStartStreaming.isSelected())
-            {
-               if (txtFieldDestinationAddr.getText().isEmpty() || txtFieldDestinationPort.getText().isEmpty())
-               {
-                  JOptionPane.showMessageDialog(mainFrame, "IP Address and port cannot be empty!", "Address Error", JOptionPane.ERROR_MESSAGE);
-                  btnStartStreaming.setSelected(false);
-               }
-               else
-               {
-
-                  String cmd = "udp://@" + txtFieldDestinationAddr.getText() + ":" + txtFieldDestinationPort.getText();
-                  videoStreamer = new FFmpegFrameRecorder(cmd, 1920, 1080);
-                  videoStreamer.setFormat("mpegts");
-                  videoStreamer.setVideoCodec(avcodec.AV_CODEC_ID_H265); // works with VLC
-                  videoStreamer.setInterleaved(false);
-                  videoStreamer.setVideoOption("pix_fmt", "yuv420p");
-                  videoStreamer.setVideoOption("fflags", "discardcorrupt");
-                  videoStreamer.setVideoOption("fflags", "genpts");
-                  videoStreamer.setVideoOption("fflags", "igndts");
-                  videoStreamer.setVideoOption("fflags", "nofillin");
-                  videoStreamer.setVideoOption("fflags", "flush_packets");
-                  videoStreamer.setVideoOption("tune", "zerolatency");
-                  //						recorder.setVideoOption("preset", "normal");
-                  //						recorder.setVideoOption("crf",  "" + 18);
-
-                  videoStreamer.setFrameRate(25);
-                  try
-                  {
-                     videoStreamer.start();
-                     streamVideo = true;
-                     System.out.println("Started session: " + cmd);
-                  }
-                  catch (org.bytedeco.javacv.FrameRecorder.Exception e1)
-                  {
-                     e1.printStackTrace();
-                  }
-               }
-            }
-            else
-            {
-               try
-               {
-                  videoStreamer.stop();
-               }
-               catch (org.bytedeco.javacv.FrameRecorder.Exception e1)
-               {
-                  e1.printStackTrace();
-               }
-            }
-
-         }
-      });
+      btnStartStreaming.addActionListener(e -> streamVideo = btnStartStreaming.isSelected());
       panel.add(btnStartStreaming);
 
       JCheckBox chckbxShowInputImage = new JCheckBox("Show Input Image");
