@@ -31,7 +31,7 @@ import us.ihmc.ros2.Ros2Publisher;
 
 public class VideoManager
 {
-   private static final String LOGGING_CAMERA_VIDEO_TOPIC = "logging_camera_video_stream";
+   public static final String LOGGING_CAMERA_VIDEO_TOPIC = "logging_camera_video_stream";
    private CanvasFrame mainFrame;
 
    private boolean started = false;
