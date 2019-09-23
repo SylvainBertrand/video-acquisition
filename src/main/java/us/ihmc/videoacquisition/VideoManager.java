@@ -1,19 +1,16 @@
 package us.ihmc.videoacquisition;
 
 import java.awt.BorderLayout;
+import java.awt.Graphics2D;
+import java.awt.Image;
 import java.awt.image.BufferedImage;
-import java.io.File;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 
-import javax.imageio.ImageIO;
-import javax.swing.JCheckBox;
 import javax.swing.JFrame;
-import javax.swing.JLabel;
 import javax.swing.JPanel;
-import javax.swing.JToggleButton;
 import javax.swing.SwingUtilities;
 
 import org.bytedeco.javacv.CanvasFrame;
@@ -29,27 +26,21 @@ import us.ihmc.codecs.yuv.JPEGEncoder;
 import us.ihmc.codecs.yuv.YUVPictureConverter;
 import us.ihmc.commons.thread.ThreadTools;
 import us.ihmc.pubsub.DomainFactory.PubSubImplementation;
-import us.ihmc.ros2.RealtimeRos2Node;
-import us.ihmc.ros2.RealtimeRos2Publisher;
-import us.ihmc.util.PeriodicNonRealtimeThreadSchedulerFactory;
-import us.ihmc.util.PeriodicThreadSchedulerFactory;
+import us.ihmc.ros2.Ros2Node;
+import us.ihmc.ros2.Ros2Publisher;
 
 public class VideoManager
 {
+   private static final String LOGGING_CAMERA_VIDEO_TOPIC = "logging_camera_video_stream";
    private CanvasFrame mainFrame;
-   private BufferedImage img;
 
    private boolean started = false;
-   private boolean showPreview = false;
-   private boolean first = true;
-   private boolean streamVideo = false;
 
-   private PeriodicThreadSchedulerFactory threadFactory = new PeriodicNonRealtimeThreadSchedulerFactory();
    private String name = "video_publisher";
    private String namespace = "/us/ihmc";
-   private int domainId = -1; // FIXME set me up
-   private RealtimeRos2Node ros2Node;
-   private RealtimeRos2Publisher<VideoPacket> videoPacketPublisher;
+   private int domainId = 154; // FIXME set me up
+   private Ros2Node ros2Node;
+   private Ros2Publisher<VideoPacket> videoPacketPublisher;
    private Java2DFrameConverter frameConverter = new Java2DFrameConverter();
    private final OpenCVFrameGrabber grabber;
 
@@ -59,19 +50,10 @@ public class VideoManager
       grabber.setImageWidth(640);
       grabber.setImageHeight(480);
 
-      ros2Node = new RealtimeRos2Node(PubSubImplementation.FAST_RTPS, threadFactory, name, namespace, domainId);
-      videoPacketPublisher = ros2Node.createPublisher(VideoPacket.getPubSubType().get(), "logging_camera_video_stream");
-      ros2Node.spin();
+      ros2Node = new Ros2Node(PubSubImplementation.FAST_RTPS, name, namespace, domainId);
+      videoPacketPublisher = ros2Node.createPublisher(VideoPacket.getPubSubType().get(), LOGGING_CAMERA_VIDEO_TOPIC);
       ScheduledExecutorService executor = ThreadTools.newSingleDaemonThreadScheduledExecutor("video-grabber");
 
-      try
-      {
-         img = ImageIO.read(new File("noVideo.png"));
-      }
-      catch (IOException e)
-      {
-         e.printStackTrace();
-      }
       setupUI();
 
       executor.scheduleAtFixedRate(() ->
@@ -83,36 +65,23 @@ public class VideoManager
          {
             Frame capturedFrame = grabber.grab();
 
-            if (capturedFrame != null)
+            if (capturedFrame == null)
+               return;
+
+            if (mainFrame.isVisible())
             {
-               if (mainFrame.isVisible())
-               {
-                  // Show our frame in the preview
-
-                  if (showPreview)
-                  {
-                     SwingUtilities.invokeLater(() -> mainFrame.showImage(capturedFrame));
-                     first = true;
-                  }
-                  else
-                  {
-                     if (first)
-                     {
-                        first = false;
-                        SwingUtilities.invokeLater(() -> mainFrame.showImage(img));
-                     }
-                  }
-
-                  if (streamVideo)
-                  {
-                     BufferedImage image = frameConverter.convert(capturedFrame);
-                     VideoPacket videoPacket = toVideoPacket(image);
-                     videoPacketPublisher.publish(videoPacket);
-                  }
-               }
+               // Show our frame in the preview
+               SwingUtilities.invokeLater(() -> mainFrame.showImage(capturedFrame));
             }
+
+            BufferedImage image = frameConverter.convert(capturedFrame);
+            if (image.getWidth() > 1280)
+               image = resize(image, 1280, 720);
+            VideoPacket videoPacket = toVideoPacket(image);
+            videoPacketPublisher.publish(videoPacket);
+
          }
-         catch (Exception e)
+         catch (Throwable e)
          {
             e.printStackTrace();
          }
@@ -133,6 +102,18 @@ public class VideoManager
 
    }
 
+   public static BufferedImage resize(BufferedImage originalImage, int newWidth, int newHeight)
+   {
+      Image tmp = originalImage.getScaledInstance(newWidth, newHeight, Image.SCALE_SMOOTH);
+      BufferedImage reducedImage = new BufferedImage(newWidth, newHeight, BufferedImage.TYPE_INT_ARGB);
+
+      Graphics2D g2d = reducedImage.createGraphics();
+      g2d.drawImage(tmp, 0, 0, null);
+      g2d.dispose();
+
+      return reducedImage;
+   }
+
    private final YUVPictureConverter converter = new YUVPictureConverter();
    private final JPEGEncoder encoder = new JPEGEncoder();
 
@@ -145,7 +126,12 @@ public class VideoManager
          ByteBuffer buffer = encoder.encode(picture, 75);
          byte[] data = new byte[buffer.remaining()];
          buffer.get(data);
+
          videoPacket = new VideoPacket();
+
+         if (data.length > videoPacket.getData().capacity())
+            System.err.println("Image is too big!");
+
          videoPacket.getData().add(data);
          videoPacket.setTimestamp(System.nanoTime());
       }
@@ -165,23 +151,9 @@ public class VideoManager
       mainFrame.setLocationRelativeTo(null);
       mainFrame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
 
-      JPanel panel = new JPanel();
-      mainFrame.getContentPane().add(panel, BorderLayout.NORTH);
-
-      JToggleButton btnStartStreaming = new JToggleButton("START STREAMING");
-      btnStartStreaming.addActionListener(e -> streamVideo = btnStartStreaming.isSelected());
-      panel.add(btnStartStreaming);
-
-      JCheckBox chckbxShowInputImage = new JCheckBox("Show Input Image");
-      panel.add(chckbxShowInputImage);
-
-      chckbxShowInputImage.addActionListener(e -> showPreview = chckbxShowInputImage.isSelected());
-
       JPanel panel_1 = new JPanel();
       mainFrame.getContentPane().add(panel_1, BorderLayout.SOUTH);
 
-      JLabel lblStreamStatus = new JLabel("");
-      panel_1.add(lblStreamStatus);
       mainFrame.setVisible(true);
    }
 
