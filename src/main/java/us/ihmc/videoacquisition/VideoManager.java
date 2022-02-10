@@ -26,21 +26,21 @@ import us.ihmc.codecs.yuv.JPEGEncoder;
 import us.ihmc.codecs.yuv.YUVPictureConverter;
 import us.ihmc.commons.thread.ThreadTools;
 import us.ihmc.pubsub.DomainFactory.PubSubImplementation;
-import us.ihmc.ros2.Ros2Node;
-import us.ihmc.ros2.Ros2Publisher;
+import us.ihmc.ros2.ROS2Node;
+import us.ihmc.ros2.ROS2Publisher;
 
 public class VideoManager
 {
-   public static final String LOGGING_CAMERA_VIDEO_TOPIC = "logging_camera_video_stream";
+   public static final String LOGGING_CAMERA_VIDEO_TOPIC = "/ihmc/video";
    private CanvasFrame mainFrame;
 
    private boolean started = false;
 
    private String name = "video_publisher";
    private String namespace = "/us/ihmc";
-   private int domainId = 154; // FIXME set me up
-   private Ros2Node ros2Node;
-   private Ros2Publisher<VideoPacket> videoPacketPublisher;
+   private int domainId = 57; // FIXME set me up
+   private ROS2Node ros2Node;
+   private ROS2Publisher<VideoPacket> videoPacketPublisher;
    private Java2DFrameConverter frameConverter = new Java2DFrameConverter();
    private final OpenCVFrameGrabber grabber;
 
@@ -50,7 +50,7 @@ public class VideoManager
       grabber.setImageWidth(640);
       grabber.setImageHeight(480);
 
-      ros2Node = new Ros2Node(PubSubImplementation.FAST_RTPS, name, namespace, domainId);
+      ros2Node = new ROS2Node(PubSubImplementation.FAST_RTPS, name, namespace, domainId);
       videoPacketPublisher = ros2Node.createPublisher(VideoPacket.getPubSubType().get(), LOGGING_CAMERA_VIDEO_TOPIC);
       ScheduledExecutorService executor = ThreadTools.newSingleDaemonThreadScheduledExecutor("video-grabber");
 
@@ -60,6 +60,8 @@ public class VideoManager
       {
          if (!started)
             return;
+
+         System.out.println("Yoohoo!");
 
          try
          {
@@ -75,8 +77,8 @@ public class VideoManager
             }
 
             BufferedImage image = frameConverter.convert(capturedFrame);
-            if (image.getWidth() > 1280)
-               image = resize(image, 1280, 720);
+            if (image.getWidth() > 1280 / 2)
+               image = resize(image, 1280 / 2, 720 / 2);
             VideoPacket videoPacket = toVideoPacket(image);
             videoPacketPublisher.publish(videoPacket);
 
@@ -87,16 +89,53 @@ public class VideoManager
          }
       }, 0, 100, TimeUnit.MILLISECONDS);
 
-      executor.execute(() ->
+      executor.execute(new Runnable()
       {
-         try
+         @Override
+         public void run()
          {
-            grabber.start();
-            started = true;
+            if (start())
+            {
+               started = true;
+               return;
+            }
+            else
+            {
+               while (!restart())
+               {
+                  System.out.println("Trying to restart");
+               }
+
+               started = true;
+            }
          }
-         catch (Exception e)
+
+         private boolean start()
          {
-            e.printStackTrace();
+            try
+            {
+               grabber.start();
+               return true;
+            }
+            catch (Exception e)
+            {
+               e.printStackTrace();
+               return false;
+            }
+         }
+
+         private boolean restart()
+         {
+            try
+            {
+               grabber.restart();
+               return true;
+            }
+            catch (Exception e)
+            {
+               e.printStackTrace();
+               return false;
+            }
          }
       });
 
@@ -128,6 +167,7 @@ public class VideoManager
          buffer.get(data);
 
          videoPacket = new VideoPacket();
+         videoPacket.source = 0;
 
          if (data.length > videoPacket.getData().capacity())
             System.err.println("Image is too big!");

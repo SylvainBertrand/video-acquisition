@@ -14,8 +14,8 @@ import javafx.scene.image.WritableImage;
 import javafx.scene.layout.AnchorPane;
 import javafx.stage.Stage;
 import us.ihmc.pubsub.DomainFactory.PubSubImplementation;
-import us.ihmc.ros2.RealtimeRos2Node;
-import us.ihmc.ros2.Ros2Distro;
+import us.ihmc.ros2.ROS2Distro;
+import us.ihmc.ros2.RealtimeROS2Node;
 import us.ihmc.util.PeriodicNonRealtimeThreadSchedulerFactory;
 import us.ihmc.util.PeriodicThreadSchedulerFactory;
 
@@ -39,7 +39,7 @@ public class StandaloneVideoReceiver extends Application
    public void start(Stage primaryStage) throws Exception
    {
       PeriodicThreadSchedulerFactory threadFactory = new PeriodicNonRealtimeThreadSchedulerFactory();
-      ros2Node = new RealtimeRos2Node(PubSubImplementation.FAST_RTPS, Ros2Distro.ARDENT, threadFactory, name, namespace);
+      ros2Node = new RealtimeROS2Node(PubSubImplementation.FAST_RTPS, ROS2Distro.ARDENT, threadFactory, name, namespace);
 
       ros2Node.createCallbackSubscription(VideoPacket.getPubSubType().get(),
                                           VideoManager.LOGGING_CAMERA_VIDEO_TOPIC,
@@ -60,7 +60,7 @@ public class StandaloneVideoReceiver extends Application
    }
 
    private final JPEGDecompressor decompressor = new JPEGDecompressor();
-   private RealtimeRos2Node ros2Node;
+   private RealtimeROS2Node ros2Node;
 
    private void updateVideoFeed()
    {
